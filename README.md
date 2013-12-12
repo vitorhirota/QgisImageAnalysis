@@ -28,6 +28,8 @@ ROIs can be hand created, and need to have a column containing a given numerical
 
 The plugin will then intersect roi polygons with the segments to train an SVM.
 
+After training a new shapefile with classified segments will be generated, saved in the same folder as the original segmented image and included in the current project.
+
 ## License
 
 This plugin is released under the MIT License.

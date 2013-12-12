@@ -12,9 +12,9 @@ changelog=
 
 tags=image classification, svm
 
-tracker=http://github.com
-homepage=http://github.com
-repository=http://github.com
+tracker=https://github.com/vitorhirota/ImageClassifier/issues
+homepage=https://github.com/vitorhirota/ImageClassifier
+repository=https://github.com/vitorhirota/ImageClassifier
 
 qgisMinimumVersion=2.0
 experimental=True
