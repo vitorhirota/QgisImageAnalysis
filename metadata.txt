@@ -1,0 +1,23 @@
+[general]
+name=ImageClassifier
+description=
+    Image classification with SVMs.
+version=1.0
+author=Vitor Hirota, DPI INPE
+email=vitor.hirota@gmail.com
+
+category=Raster
+changelog=
+    1.0 - initial version
+
+tags=image classification, svm
+
+tracker=http://github.com
+homepage=http://github.com
+repository=http://github.com
+
+qgisMinimumVersion=2.0
+experimental=True
+
+; change icon...
+icon=icons/icon.png
