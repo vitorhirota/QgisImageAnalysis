@@ -1,96 +1,137 @@
 # -*- coding: utf-8 -*-
-#-----------------------------------------------------------
+
+#***********************************************************************
 #
-# fTools
-# Copyright (C) 2008-2011  Carson Farmer
-# EMAIL: carson.farmer (at) gmail.com
-# WEB  : http://www.ftools.ca/fTools.html
+# Image Analysis
+# ----------------------------------------------------------------------
+# Utility functions and base classes
 #
-# A collection of data management and analysis tools for vector data
+# Vitor Hirota (vitor.hirota [at] gmail.com), INPE 2013
 #
-#-----------------------------------------------------------
+# This source is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 2 of the License, or (at your
+# option) any later version.
 #
-# licensed under the terms of GNU GPL 2
+# This code is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
 #
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# A copy of the GNU General Public License is available on the World
+# Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also
+# obtain it by writing to the Free Software Foundation, Inc., 59 Temple
+# Place - Suite 330, Boston, MA 02111-1307, USA.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
-#---------------------------------------------------------------------
+#***********************************************************************
 
-from qgis.core import *
-
-# This is a subset of fTools utils functions needed to intersect polygons
-
-# From two input field maps, create single field map
-def combineVectorFields( layerA, layerB ):
-    fieldsA = layerA.dataProvider().fields()
-    fieldsB = layerB.dataProvider().fields()
-    fieldsB = testForUniqueness( fieldsA, fieldsB )
-    for f in fieldsB:
-      fieldsA.append( f )
-    return fieldsA
+from PyQt4 import QtCore, QtGui
+# from qgis.core import *
+from qgis.core import QgsMapLayer, QgsMessageLog, QgsVectorLayer
+from qgis.gui import QgsMessageBar
 
 
-# Convinience function to create a spatial index for input QgsVectorDataProvider
-def createIndex( provider ):
-    feat = QgsFeature()
-    index = QgsSpatialIndex()
-    fit = provider.getFeatures()
-    while fit.nextFeature( feat ):
-        index.insertFeature( feat )
-    return index
-
-
-def getGeomType(gT):
-  if gT == 3 or gT == 6:
-    gTypeListPoly = [ QGis.WKBPolygon, QGis.WKBMultiPolygon ]
-    return gTypeListPoly
-  elif gT == 2 or gT == 5:
-    gTypeListLine = [ QGis.WKBLineString, QGis.WKBMultiLineString ]
-    return gTypeListLine
-  elif gT == 1 or gT == 4:
-    gTypeListPoint = [ QGis.WKBPoint, QGis.WKBMultiPoint ]
-    return gTypeListPoint
-
-
-# Check if two input field maps are unique, and resolve name issues if they aren't
-def testForUniqueness( fieldList1, fieldList2 ):
-    changed = True
-    while changed:
-        changed = False
-        for i in range(0,len(fieldList1)):
-            for j in range(0,len(fieldList2)):
-                if fieldList1[i].name() == fieldList2[j].name():
-                    fieldList2[j] = createUniqueFieldName( fieldList2[j] )
-                    changed = True
-    return fieldList2
-
-
-# Create a unique field name based on input field name
-def createUniqueFieldName( field ):
-    check = field.name()[-2:]
-    shortName = field.name()[:8]
-    if check[0] == "_":
+def error_handler(run_fn):
+    def wrapped(self, *args, **kwargs):
         try:
-            val = int( check[-1:] )
-            if val < 2:
-                val = 2
-            else:
-                val = val + 1
-            field.setName( shortName[len( shortName )-1:] + unicode( val ) )
-        except exceptions.ValueError:
-            field.setName( shortName + "_2" )
-    else:
-        field.setName( shortName + "_2" )
-    return field
+            self.log.emit('worker: run started')
+            run_fn(self, *args, **kwargs)
+        except:
+            import traceback
+            self.error.emit(traceback.format_exc())
+            error_msg = 'Failed. Please check the logs for details.'
+            self.finished.emit(False, error_msg)
+        else:
+            self.log.emit('worker: completed successfully')
+            self.finished.emit(True, self.output)
+    return wrapped
+
+
+class Task(QtCore.QObject):
+    def __init__(self, parent, *args):
+        self.parent = parent
+        self.valid = True
+        self.worker = None
+        self.setup(*args)
+
+    def is_valid(self):
+        return self.valid
+
+    def run(self):
+        # move worker to a new thread
+        self.thread = QtCore.QThread()
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        # setup signals
+        self.worker.log.connect(self.parent.log)
+        self.worker.status.connect(self.status)
+        self.worker.progress.connect(self.progress)
+        self.worker.error.connect(self.error)
+        self.worker.finished.connect(self.finish)
+        # fire thread
+        self.thread.start()
+        self.thread.exec_()
+
+    def clear_message_bar(self, msg, level=QgsMessageBar.INFO):
+        mb = self.parent.iface.messageBar()
+        mb.popWidget(self.parent.messageBar)
+        mb.pushMessage(self.parent.action, msg, level=level)
+
+    def post_run(self):
+        pass
+
+    def status(self, msg=''):
+        self.parent.log(msg)
+        self.parent.messageBar.setText(msg)
+
+    def progress(self, value):
+        self.parent.progressBar.setValue(value)
+        pb = self.parent.messageBar.findChildren(QtGui.QProgressBar)[0]
+        pb.setValue(value)
+
+    def error(self, msg):
+        self.parent.log(msg, level='crit')
+
+    def kill(self):
+        self.parent.log('worker: killing')
+        self.worker.kill()
+        self.parent.ok_btn.setEnabled(True)
+        self.parent.progressBar.setValue(0)
+
+    def finish(self, success, output):
+        # post run
+        if success:
+            self.post_run(output)
+            self.clear_message_bar(self.completed, duration=10)
+        else:
+            self.clear_message_bar(output, level=QgsMessageBar.CRITICAL,)
+        # update gui
+        self.parent.ok_btn.setEnabled(True)
+        # clean up task, worker and thread
+        self.worker.deleteLater()
+        self.thread.quit()
+        self.thread.wait()
+        self.thread.deleteLater()
+
+
+class Worker(QtCore.QObject):
+    def __init__(self):
+        QtCore.QObject.__init__(self)
+        self.abort = False
+        self.output = None
+
+    def setup(self, *args, **kwargs):
+        pass
+
+    def run(self):
+        pass
+
+    def kill(self):
+        self.abort = True
+
+    log = QtCore.pyqtSignal(str)
+    status = QtCore.pyqtSignal(str)
+    progress = QtCore.pyqtSignal(int)
+    error = QtCore.pyqtSignal(str)
+    # killed = QtCore.pyqtSignal()
+    finished = QtCore.pyqtSignal(bool, str)

@@ -1,38 +1,45 @@
-ImageClassifier
-===============
+ImageAnalysis
+=============
 
-QGIS plugin for semi-automatic image classification using SVM.
+QGIS plugin for Image Analysis, featuring image segmentation, segment
+statistics calculation and segment label propagation.
+
+This plugin was firstly developed as separate plugins as part of a Pattern
+Recognition class final project at the Applied Computation Graduation Program
+at the Brazilian National Institute for Space Research (INPE).
 
 ## Dependencies
 
-* [pyshp][1]
-* [scikit-learn][2]
+* [scikit-learn][1]
 
 ## Installation
 
-Just download the .zip and extracts the content on your qgis plugin folder (usually HOME/.qgis2/python/plugins)
+Just download the .zip and extracts the content on your qgis plugin folder
+(HOME/.qgis2/python/plugins on *NIX platforms)
 
 ## Usage
 
-The plugin classifies segments, instead of a raster image.
+### Segmentation
 
-It works with the given inputs:
+Given a raster image, this method segments the image by first clustering it
+with a k-means method and then labeling connected components. Output is a
+shapefile with all the segments found.
 
-* raster image
-* segmented shapefile
-* ROIs shapefile
+### Statistics computation
 
-The raster image is just used for generating statistics for each segment (mean, median, standard deviation), in case needed, and saving the data to the segmented shapefile.
+After the raster image is segmented, this method computes mean, median and
+standard deviation for each segment, based on all the pixels of the original
+raster image that resides inside that segment. Output is saved on the .dbf
+file of the segmented shapefile.
 
-ROIs can be hand created, and need to have a column containing a given numerical class.
+### Classification
 
-The plugin will then intersect roi polygons with the segments to train an SVM.
-
-After training a new shapefile with classified segments will be generated, saved in the same folder as the original segmented image and included in the current project.
+Given a segments shapefile, and a ROIs shapefile, a SVM is trained with the
+intersection of the two shapefiles, which is then used to propagate the labels
+to the rest of the segments. Output is a new classified shapefile.
 
 ## License
 
-This plugin is released under the MIT License.
+This plugin is released under the GNU GPL License.
 
-[1]: http://code.google.com/p/pyshp/
-[2]: http://scikit-learn.org/
+[1]: http://scikit-learn.org/

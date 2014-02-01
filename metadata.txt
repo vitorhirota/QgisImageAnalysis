@@ -1,23 +1,22 @@
 [general]
-name=ImageClassifier
-description=
-    Image classification with SVMs.
+name=ImageAnalysis
+description=Image Analysis toolkit for segmentation/classification.
 version=1.0
-author=Vitor Hirota, DPI INPE
-email=vitor.hirota@gmail.com
+author=Vitor Hirota Makiyama, José Renato Garcia Braga, DPI INPE
+email=vitor.hirota@gmail.com, jgarciabraga@gmail.com
 
 category=Raster
 changelog=
     1.0 - initial version
 
-tags=image classification, svm
+tags=image classification, image segmentation, k-means, svm
 
-tracker=https://github.com/vitorhirota/ImageClassifier/issues
-homepage=https://github.com/vitorhirota/ImageClassifier
-repository=https://github.com/vitorhirota/ImageClassifier
+tracker=https://github.com/vitorhirota/ImageAnalysis/issues
+homepage=https://github.com/vitorhirota/ImageAnalysis
+repository=https://github.com/vitorhirota/ImageAnalysis
 
 qgisMinimumVersion=2.0
-experimental=True
+experimental=False
 
 ; change icon...
-icon=icons/icon.png
+icon=resources/icon.png
