@@ -26,11 +26,17 @@
 #
 #***********************************************************************
 
-# import pickle
+try:
+    import cPickle as pickle
+except:
+    import pickle
 import os
+import subprocess
+import sys
 import tempfile
 import time
 
+from PyQt4 import QtCore
 from qgis.core import *
 
 import numpy as np
@@ -43,50 +49,67 @@ import util
 
 class Task(util.Task):
     def setup(self, *args):
+        gdal.UseExceptions()
         # unpack arguments
         raster_ipt, n_clusters = args
         try:
-            self.rst_layer = self.parent.get_layer(QgsMapLayer.RasterLayer,
+            rst_layer = self.parent.get_layer(QgsMapLayer.RasterLayer,
                                                    raster_ipt)
         except IndexError:
             self.valid = False
             self.invalid = 'Please, set raster image.'
             return
         # open raster images
-        self.rst_ds = gdal.Open(self.rst_layer.source(), gdal.GA_ReadOnly)
-        # create output raster
+        rst_ds = gdal.Open(rst_layer.source(), gdal.GA_ReadOnly)
+        # create temp output raster
+        # tmp_rst = tempfile.NamedTemporaryFile()
         filename = '%s/kmeans_c%s_%s.tif' % (
-                        os.path.dirname(self.rst_layer.source()),
+                        os.path.dirname(rst_layer.source()),
                         n_clusters,
                         int(time.time())
                     )
-        x, y = self.rst_layer.width(), self.rst_layer.height()
-        driver = gdal.GetDriverByName('GTiff')
-        self.dst_ds = driver.Create(filename, x, y, 1, gdal.GDT_UInt32)
-        self.dst_ds.SetGeoTransform(self.rst_ds.GetGeoTransform())
-        self.dst_ds.SetProjection(self.rst_ds.GetProjection())
+        # calling gdal directly was crashing qgis
+        subprocess.call("""%s -c "from osgeo import gdal
+driver = gdal.GetDriverByName('GTiff')
+dst_ds = driver.Create('%s', %s, %s, 1, gdal.GDT_UInt32)
+dst_ds.SetGeoTransform(%s)
+dst_ds.SetProjection('%s')
+dst_ds = None"
+""" % (sys.executable, filename, rst_ds.RasterXSize, rst_ds.RasterYSize,
+       rst_ds.GetGeoTransform(), rst_ds.GetProjection().replace('"', '\\"')),
+                        shell=True)
+        self.dst_ds = gdal.Open(filename, gdal.GA_Update)
 
-        self.worker = Worker(self.rst_layer, self.rst_ds, self.dst_ds,
-                             n_clusters)
+        self.worker = Worker(rst_ds, n_clusters)
+        self.worker.update_raster.connect(self.update_raster)
         self.filename = filename
+        self.rlayer = None
+
+    def update_raster(self, obj):
+        band = self.dst_ds.GetRasterBand(1)
+        band.WriteArray(pickle.loads(str(obj)), 0, 0)
+        band.FlushCache()
+        band = None
+        # remove/add output raster to canvas
+        if self.rlayer:
+            self.parent.layer_registry.removeMapLayer(self.rlayer.id())
+        self.rlayer = QgsRasterLayer(self.filename,
+                                     os.path.basename(self.filename))
+        self.parent.layer_registry.addMapLayer(self.rlayer)
+
 
     def post_run(self, obj):
-        # add output raster to canvas
-        rlayer = QgsRasterLayer(self.filename, os.path.basename(self.filename))
-        QgsMapLayerRegistry.instance().addMapLayer(rlayer)
-
+        # polygonize
         self.completed = ('completed successfully. ')
 
 
 class Worker(util.Worker):
-    def __init__(self, rst_layer, rst_ds, dst_ds, n_clusters):
+    update_raster = QtCore.pyqtSignal(str)
+
+    def __init__(self, rst_ds, n_clusters):
         util.Worker.__init__(self)
-        self.rst_layer = rst_layer
         self.rst_ds = rst_ds
-        self.dst_ds = dst_ds
         self.n_clusters = int(n_clusters)
-        self.percentage = 0
-        # self.tmp_rst = tempfile.NamedTemporaryFile()
 
     @util.error_handler
     def run(self):
@@ -94,35 +117,47 @@ class Worker(util.Worker):
         rst_y = self.rst_ds.RasterYSize
         bands = self.rst_ds.RasterCount
         data_rst = self.rst_ds.ReadAsArray()
+        self.log.emit('each step may take a few minutes')
 
-        ###Realiza K-means
         kmeans = KMeans(n_clusters=self.n_clusters, init='k-means++', n_init=10)
-        # KMeans()
-        self.status.emit('clustering data (this may take a few minutes)... ')
+        if self.abort:
+            self.finished.emit(False, 'Terminated.')
+            return
+        self.status.emit('clustering data... ')
         clusters = kmeans.fit_predict(data_rst.reshape(6, rst_y*rst_x).T)
-        self.progress.emit(10)
+        clusters = clusters.reshape(rst_y, rst_x)
+        self.progress.emit(15)
+        self.update_raster.emit(pickle.dumps(clusters))
 
         self.status.emit('applying mode filter...')
-        clusters = clusters.reshape(rst_y, rst_x)
         step = 0
         for i in range(1,rst_y-1):
             for j in range(1,rst_x-1):
+                if self.abort:
+                    self.finished.emit(False, 'Terminated.')
+                    return
                 retorno = stats.mode(clusters[i-1:i+2,j-1:j+2], axis=None)
                 clusters[i][j]=retorno[0]
             step += 1
-            self.calculate_progress(step, rst_y, 10, 30)
+            if step % 10 == 0:
+                self.calculate_progress(step, rst_y, 15, 50)
+                self.update_raster.emit(pickle.dumps(clusters))
 
         self.status.emit('labelling connected components')
-        segments = np.zeros(shape=(rst_y, rst_x))
+        segments = np.zeros(shape=(rst_y, rst_x), dtype=np.int32)
         components = 0
         step = 0
         for i in np.unique(clusters):
+            if self.abort:
+                self.finished.emit(False, 'Terminated.')
+                return
             tmp = np.where(clusters==i, 1, 0).reshape(rst_y, rst_x)
             lbl, comp = ndimage.label(tmp)
             segments += np.ma.masked_equal(lbl, 0) + components
             components += comp
             step += 1
-            self.calculate_progress(step, self.n_clusters, 40, 30)
+            self.calculate_progress(step, self.n_clusters, 65, 35)
 
-        # import pydevd; pydevd.settrace()
-        self.dst_ds.GetRasterBand(1).WriteArray(segments)
+        pickle_segments = pickle.dumps(segments)
+        self.update_raster.emit(pickle_segments)
+        self.output = pickle.dumps(pickle_segments)

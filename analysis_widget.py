@@ -27,7 +27,7 @@
 
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtGui import QMessageBox, QWidget
-from qgis.core import QgsMessageLog
+from qgis.core import QgsMessageLog, QgsMapLayerRegistry
 from qgis.gui import QgsMessageBar
 
 from analysis_ui import Ui_AnalysisWidget as Ui_Widget
@@ -53,6 +53,7 @@ class AnalysisWidget(QWidget, Ui_Widget):
         QWidget.__init__(self)
         self.setupUi(self)
         self.iface = iface
+        self.layer_registry = QgsMapLayerRegistry.instance()
         self.layers = self.iface.legendInterface().layers()
         self.task = None
 

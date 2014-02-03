@@ -69,8 +69,12 @@ class Task(QtCore.QObject):
         self.worker.error.connect(self.error)
         self.worker.finished.connect(self.finish)
         # fire thread
-        self.thread.start()
-        self.thread.exec_()
+        try:
+            self.thread.start()
+            self.thread.exec_()
+        except:
+            import traceback
+            self.parent.log(traceback.format_exc())
 
     def clear_message_bar(self, msg, level=QgsMessageBar.INFO, duration=-1):
         mb = self.parent.iface.messageBar()
@@ -100,8 +104,10 @@ class Task(QtCore.QObject):
         self.progress(0)
 
     def finish(self, success, output):
+        self.progress(0)
         # post run
         if success:
+            self.parent.log('post run')
             self.post_run(output)
             self.clear_message_bar(self.completed, duration=10)
         else:
@@ -113,9 +119,17 @@ class Task(QtCore.QObject):
         self.thread.quit()
         self.thread.wait()
         self.thread.deleteLater()
+        # self.deleteLater()
 
 
 class Worker(QtCore.QObject):
+    log = QtCore.pyqtSignal(str)
+    status = QtCore.pyqtSignal(str)
+    progress = QtCore.pyqtSignal(int)
+    error = QtCore.pyqtSignal(str)
+    # killed = QtCore.pyqtSignal()
+    finished = QtCore.pyqtSignal(bool, str)
+
     def __init__(self):
         QtCore.QObject.__init__(self)
         self.abort = False
@@ -133,9 +147,3 @@ class Worker(QtCore.QObject):
     def calculate_progress(self, step, total_steps, offset, weight):
         self.progress.emit(offset + step * weight / total_steps)
 
-    log = QtCore.pyqtSignal(str)
-    status = QtCore.pyqtSignal(str)
-    progress = QtCore.pyqtSignal(int)
-    error = QtCore.pyqtSignal(str)
-    # killed = QtCore.pyqtSignal()
-    finished = QtCore.pyqtSignal(bool, str)
