@@ -21,9 +21,9 @@ Just download the .zip and extracts the content on your qgis plugin folder
 
 ### Segmentation
 
-Given a raster image, this method segments the image by first clustering it
-with a k-means method and then labeling connected components. Output is a
-shapefile with all the segments found.
+Given a raster image, this method segments it by first clustering with a
+k-means method and then labeling connected components. Output is a shapefile
+with all the segments found.
 
 ### Statistics computation
 

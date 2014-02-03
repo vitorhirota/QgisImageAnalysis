@@ -72,13 +72,13 @@ class Task(QtCore.QObject):
         self.thread.start()
         self.thread.exec_()
 
-    def clear_message_bar(self, msg, level=QgsMessageBar.INFO):
+    def clear_message_bar(self, msg, level=QgsMessageBar.INFO, duration=-1):
         mb = self.parent.iface.messageBar()
         mb.popWidget(self.parent.messageBar)
-        mb.pushMessage(self.parent.action, msg, level=level)
+        mb.pushMessage(self.parent.action, msg, level=level, duration=duration)
 
     def post_run(self):
-        pass
+        self.completed = 'Task completed.'
 
     def status(self, msg=''):
         self.parent.log(msg)
@@ -91,12 +91,13 @@ class Task(QtCore.QObject):
 
     def error(self, msg):
         self.parent.log(msg, level='crit')
+        self.worker.kill()
 
     def kill(self):
         self.parent.log('worker: killing')
         self.worker.kill()
         self.parent.ok_btn.setEnabled(True)
-        self.parent.progressBar.setValue(0)
+        self.progress(0)
 
     def finish(self, success, output):
         # post run
@@ -128,6 +129,9 @@ class Worker(QtCore.QObject):
 
     def kill(self):
         self.abort = True
+
+    def calculate_progress(self, step, total_steps, offset, weight):
+        self.progress.emit(offset + step * weight / total_steps)
 
     log = QtCore.pyqtSignal(str)
     status = QtCore.pyqtSignal(str)
